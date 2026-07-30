@@ -35,6 +35,8 @@ async function runMigrations() {
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'basic'`,
     // business_connections table
     `ALTER TABLE business_connections ADD COLUMN IF NOT EXISTS owner_telegram_id TEXT`,
+    // automod_messages table
+    `ALTER TABLE automod_messages ADD COLUMN IF NOT EXISTS chat_id TEXT`,
   ];
 
   for (const migration of migrations) {

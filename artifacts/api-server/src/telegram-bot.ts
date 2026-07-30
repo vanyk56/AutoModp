@@ -1,5 +1,5 @@
 import TelegramBot from "node-telegram-bot-api";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import {
   db,
@@ -854,18 +854,55 @@ export async function startTelegramBot() {
     const toneDesc = tone === "professional" ? "Общайся профессионально и уважительно." : tone === "formal" ? "Общайся строго официально." : "Общайся дружелюбно и тепло.";
 
     try {
+      // Load recent conversation history for this specific chat (last 10 exchanges)
+      const recentMessages = await db
+        .select()
+        .from(automodMessagesTable)
+        .where(and(
+          eq(automodMessagesTable.businessConnectionId, connId),
+          eq(automodMessagesTable.chatId, chatId)
+        ))
+        .orderBy(desc(automodMessagesTable.createdAt))
+        .limit(10);
+
+      // Reverse to chronological order (oldest first)
+      recentMessages.reverse();
+
+      const isFirstMessage = recentMessages.length === 0;
+
+      // Build conversation history for AI context
+      const conversationHistory = recentMessages.map((m) => [
+        { role: "user", parts: [{ text: m.userMessage }] },
+        { role: "model", parts: [{ text: m.aiResponse }] },
+      ]).flat();
+
+      // System instruction with memory rules
+      const systemInstruction = [
+        systemPrompt,
+        toneDesc,
+        `Твоё имя: ${aiName}`,
+        "",
+        "ВАЖНЫЕ ПРАВИЛА:",
+        "- Отвечай КРАТКО — 1-3 предложения максимум.",
+        "- Пиши обычным текстом без форматирования Markdown.",
+        "- НЕ здоровайся повторно если разговор уже идёт. Поздоровайся ТОЛЬКО если это самое первое сообщение клиента.",
+        "- НЕ повторяй информацию, которую уже говорил в этом разговоре.",
+        "- Отвечай по существу на вопрос клиента, не лей воду.",
+        "- Не предлагай лишние услуги, если клиент не спрашивал.",
+        isFirstMessage ? "Это ПЕРВОЕ сообщение клиента — можешь поздороваться." : "Разговор уже идёт — НЕ здоровайся, сразу отвечай по делу.",
+      ].join("\n");
+
+      // Add system prompt + history + current message
+      const contents = [
+        { role: "user", parts: [{ text: systemInstruction }] },
+        { role: "model", parts: [{ text: "Понял, следую инструкциям." }] },
+        ...conversationHistory,
+        { role: "user", parts: [{ text }] },
+      ];
+
       const response = await ai.models.generateContent({
         model: "ag/gemini-2.5-flash",
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: `${systemPrompt}\n${toneDesc}\n\nТвоё имя: ${aiName}\n\nСообщение клиента: ${text}\n\nОтветь кратко и по делу. Пиши обычным текстом без форматирования Markdown.`,
-              },
-            ],
-          },
-        ],
+        contents,
         config: { maxOutputTokens: 8192 },
       });
 
@@ -876,9 +913,10 @@ export async function startTelegramBot() {
         business_connection_id: connId,
       } as any);
 
-      // Log the message
+      // Log the message with chatId for future history
       await db.insert(automodMessagesTable).values({
         businessConnectionId: connId,
+        chatId,
         fromUserId: String(msg.from?.id ?? ""),
         fromUsername: msg.from?.username ?? null,
         userMessage: text,

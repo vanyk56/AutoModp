@@ -5,6 +5,7 @@ import { z } from "zod/v4";
 export const automodMessagesTable = pgTable("automod_messages", {
   id: serial("id").primaryKey(),
   businessConnectionId: text("business_connection_id").notNull(),
+  chatId: text("chat_id"),
   fromUserId: text("from_user_id"),
   fromUsername: text("from_username"),
   userMessage: text("user_message").notNull(),
