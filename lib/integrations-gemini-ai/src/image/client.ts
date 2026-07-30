@@ -1,47 +1,67 @@
-import { GoogleGenAI, Modality } from "@google/genai";
+// OpenRouter image generation client
+// Uses OpenRouter's OpenAI-compatible image generation endpoint
 
-if (!process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
+const apiKey = process.env.OPENROUTER_API_KEY?.trim();
+
+if (!apiKey) {
   throw new Error(
-    "AI_INTEGRATIONS_GEMINI_BASE_URL must be set. Did you forget to provision the Gemini AI integration?",
+    "OPENROUTER_API_KEY must be set for image generation."
   );
 }
 
-if (!process.env.AI_INTEGRATIONS_GEMINI_API_KEY) {
-  throw new Error(
-    "AI_INTEGRATIONS_GEMINI_API_KEY must be set. Did you forget to provision the Gemini AI integration?",
-  );
-}
+const OPENROUTER_BASE = "https://openrouter.ai/api/v1";
+const IMAGE_MODEL = process.env.OPENROUTER_IMAGE_MODEL || "google/gemini-2.5-flash";
 
-export const ai = new GoogleGenAI({
-  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
-  httpOptions: {
-    apiVersion: "",
-    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
-  },
-});
+export const ai = { models: {} }; // compat stub
 
 export async function generateImage(
   prompt: string
 ): Promise<{ b64_json: string; mimeType: string }> {
-  const response = await ai.models.generateContent({
-    model: "antigravity/gemini-3.1-flash-image-preview",
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    config: {
-      responseModalities: [Modality.TEXT, Modality.IMAGE],
+  // Use chat completion with an image-capable model to generate images
+  // OpenRouter supports image generation through compatible models
+  const response = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": process.env.APP_URL || "https://automind.app",
+      "X-Title": "AutoMind Bot",
     },
+    body: JSON.stringify({
+      model: IMAGE_MODEL,
+      messages: [
+        {
+          role: "user",
+          content: `Generate an image: ${prompt}`,
+        },
+      ],
+      response_format: { type: "image" },
+    }),
   });
 
-  const candidate = response.candidates?.[0];
-  const imagePart = candidate?.content?.parts?.find(
-    (part: { inlineData?: { data?: string; mimeType?: string } }) => part.inlineData
-  );
-
-  if (!imagePart?.inlineData?.data) {
-    throw new Error("No image data in response");
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`OpenRouter image error: ${response.status} - ${errText}`);
   }
 
-  return {
-    b64_json: imagePart.inlineData.data,
-    mimeType: imagePart.inlineData.mimeType || "image/png",
-  };
+  const data = await response.json();
+  const imageData = data.choices?.[0]?.message?.content;
+
+  // Try to extract base64 image from the response
+  if (data.data?.[0]?.b64_json) {
+    return {
+      b64_json: data.data[0].b64_json,
+      mimeType: "image/png",
+    };
+  }
+
+  // If response contains image URL, fetch and convert to base64
+  if (data.data?.[0]?.url) {
+    const imgRes = await fetch(data.data[0].url);
+    const buffer = await imgRes.arrayBuffer();
+    const b64 = Buffer.from(buffer).toString("base64");
+    return { b64_json: b64, mimeType: "image/png" };
+  }
+
+  throw new Error("No image data in OpenRouter response. Image generation may not be supported by the selected model.");
 }

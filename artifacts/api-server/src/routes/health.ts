@@ -7,9 +7,8 @@ router.get("/healthz", (_req, res) => {
   res.json({
     status: "ok",
     env: {
-      AI_INTEGRATIONS_GEMINI_BASE_URL: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL || "not set",
-      GEMINI_API_KEY_exists: !!process.env.GEMINI_API_KEY,
-      AI_INTEGRATIONS_GEMINI_API_KEY_exists: !!process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
+      OPENROUTER_API_KEY_exists: !!process.env.OPENROUTER_API_KEY,
+      OPENROUTER_MODEL: process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash (default)",
       NODE_ENV: process.env.NODE_ENV || "not set",
     }
   });
