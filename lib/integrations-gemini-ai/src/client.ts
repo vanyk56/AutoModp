@@ -13,7 +13,7 @@ if (!apiKey) {
 const OPENROUTER_BASE = "https://openrouter.ai/api/v1";
 
 // Default model — can be overridden per-call
-const DEFAULT_MODEL = process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash";
+const DEFAULT_MODEL = process.env.OPENROUTER_MODEL || "google/gemini-3.5-flash-lite";
 
 interface ContentPart {
   text?: string;
